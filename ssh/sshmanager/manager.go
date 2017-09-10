@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/frizinak/gonzalo/ssh/sshconn"
+	"github.com/frizinak/gonzalo/stores"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -15,7 +16,7 @@ import (
 type Manager struct {
 	log      sshconn.Logger
 	conn     *sshconn.Connection
-	pstorage KeyStorage
+	pstorage stores.KeyStorage
 	addr     net.Addr
 }
 
@@ -25,8 +26,8 @@ func New(
 	pkey ssh.Signer,
 	addr net.Addr,
 	user string,
-	hostKeyStorage KeyStorage,
-	privateKeyStorage KeyStorage,
+	hostKeyStorage stores.KeyStorage,
+	privateKeyStorage stores.KeyStorage,
 ) (*Manager, error) {
 	if privateKeyStorage.Has(addr, user) {
 		raw := privateKeyStorage.Get(addr, user)
@@ -149,7 +150,7 @@ func (m *Manager) setPKey(pkey []byte) error {
 
 func checkHostKey(
 	addr net.Addr,
-	storage KeyStorage,
+	storage stores.KeyStorage,
 	getFresh func() (ssh.PublicKey, error),
 ) (ssh.PublicKey, error) {
 	user := "host"

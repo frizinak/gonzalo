@@ -10,51 +10,32 @@ import (
 	"github.com/frizinak/gonzalo/git"
 	"github.com/frizinak/gonzalo/ssh/sshconn"
 	"github.com/frizinak/gonzalo/ssh/sshmanager"
+	"github.com/frizinak/gonzalo/stores"
 	"golang.org/x/crypto/ssh"
 )
 
 type Gonzalo struct {
-	sshkey    ssh.Signer
-	ssh       *sshmanager.Pool
-	sshHStore sshmanager.KeyStorage
-	sshPStore sshmanager.KeyStorage
+	sshkey ssh.Signer
 
+	ssh *sshmanager.Pool
 	git *git.Pool
 }
 
 func NewGonzalo(
-	storage string,
 	sshkey ssh.Signer,
 	gitAuth map[string]git.Auth,
+	hostKeyStore stores.KeyStorage,
+	privateKeyStore stores.KeyStorage,
+	gitdir string,
 ) (*Gonzalo, error) {
-	storages := [2]string{
-		filepath.Join(storage, "ssh", "known_hosts"),
-		filepath.Join(storage, "ssh", "private"),
-	}
-
-	for _, p := range storages {
-		os.MkdirAll(p, 0700)
-	}
-
-	fshost, err := sshmanager.NewFSKeyStorage(storages[0], 0644)
-	if err != nil {
-		return nil, err
-	}
-	fspriv, err := sshmanager.NewFSKeyStorage(storages[1], 0600)
-	if err != nil {
-		return nil, err
-	}
-
-	gitpool := git.NewPool(filepath.Join(storage, "git"))
+	gitpool := git.NewPool(gitdir)
 	for provider := range gitAuth {
 		gitpool.SetProviderAuth(provider, gitAuth[provider])
 	}
 
 	gonzalo := &Gonzalo{
 		sshkey,
-		sshmanager.NewPool(fshost, fspriv, 2048),
-		fshost,
-		fspriv,
+		sshmanager.NewPool(hostKeyStore, privateKeyStore, 2048),
 		gitpool,
 	}
 
@@ -85,13 +66,36 @@ func (g *Gonzalo) repo(provider, vendor, project string) (*git.Repo, error) {
 func main() {
 	gitkey := sshconn.MustPKey(sshconn.ParsePrivateKeyFile("resources/git.key"))
 	sshkey := sshconn.MustPKey(sshconn.ParsePrivateKeyFile("resources/key"))
+
+	storage := "storage"
+	storages := [2]string{
+		filepath.Join(storage, "ssh", "known_hosts"),
+		filepath.Join(storage, "ssh", "private"),
+	}
+
+	for _, p := range storages {
+		os.MkdirAll(p, 0700)
+	}
+
+	hostKeyStore, err := stores.NewFSKeyStorage(storages[0], 0644)
+	if err != nil {
+		panic(err)
+	}
+
+	privateKeyStore, err := stores.NewFSKeyStorage(storages[1], 0600)
+	if err != nil {
+		panic(err)
+	}
+
 	gonzalo, err := NewGonzalo(
-		"storage",
 		sshkey,
 		map[string]git.Auth{
-			"wieni.githost.io": git.NewSSHAuth(gitkey, ""),
+			"wieni.githost.io": git.NewSSHAuth(gitkey, hostKeyStore, ""),
 			"github.com":       git.NewNoAuth(),
 		},
+		hostKeyStore,
+		privateKeyStore,
+		filepath.Join(storage, "git"),
 	)
 	if err != nil {
 		panic(err)
@@ -101,7 +105,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	if err := pubrepo.Open(); err != nil {
+		panic(err)
+	}
+
+	if err := pubrepo.Update(); err != nil {
 		panic(err)
 	}
 
@@ -111,6 +120,10 @@ func main() {
 	}
 	if err := privaterepo.Open(); err != nil {
 		log.Println("Failed to open private repo")
+	}
+
+	if err := privaterepo.Update(); err != nil {
+		log.Println("Failed to update private repo")
 	}
 
 	c, err := gonzalo.sshClient("dako.friz.pro", "22", "asdf")

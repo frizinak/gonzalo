@@ -5,18 +5,19 @@ import (
 	"sync"
 
 	"github.com/frizinak/gonzalo/ssh/sshconn"
+	"github.com/frizinak/gonzalo/stores"
 	"golang.org/x/crypto/ssh"
 )
 
 type Pool struct {
 	pool   map[string]*Manager
 	m      sync.RWMutex
-	hstore KeyStorage
-	pstore KeyStorage
+	hstore stores.KeyStorage
+	pstore stores.KeyStorage
 	bits   int
 }
 
-func NewPool(hostKeyStorage, privateKeyStorage KeyStorage, keyBits int) *Pool {
+func NewPool(hostKeyStorage, privateKeyStorage stores.KeyStorage, keyBits int) *Pool {
 	return &Pool{
 		pool:   map[string]*Manager{},
 		hstore: hostKeyStorage,

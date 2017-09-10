@@ -1,4 +1,4 @@
-package sshmanager
+package stores
 
 import (
 	"crypto/sha1"

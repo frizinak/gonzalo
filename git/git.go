@@ -7,49 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"golang.org/x/crypto/ssh"
 	git "gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport/http"
-	gitssh "gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"
-)
-
-const (
-	protoGit proto = iota
-	protoHttps
 )
 
 const remote = "origin"
-
-type proto int
-
-type Auth struct {
-	proto    proto
-	user     string
-	password string
-	key      *gitssh.PublicKeys
-}
-
-func NewSSHAuth(privateKey ssh.Signer, user string) Auth {
-	if user == "" {
-		user = "git"
-	}
-
-	return Auth{
-		proto: protoGit,
-		user:  user,
-		key:   &gitssh.PublicKeys{User: user, Signer: privateKey},
-	}
-}
-
-func NewNoAuth() Auth {
-	return Auth{proto: protoHttps}
-}
-
-func NewHTTPSAuth(user, password string) Auth {
-	return Auth{proto: protoHttps, user: user, password: password}
-}
 
 type Repo struct {
 	auth     Auth
@@ -98,47 +62,56 @@ func (r *Repo) Open() error {
 }
 
 // Ensure opens the repo if it exists, clones it if not and runs git fetch.
-func (r *Repo) Update() error {
-	clone := func() error {
-		if err := r.Delete(); err != nil {
-			return err
+func (r *Repo) Update() (err error) {
+	defer func() {
+		if err != nil {
+			r.Delete()
+		}
+	}()
+
+	clone := func() {
+		if err = r.Delete(); err != nil {
+			return
 		}
 
-		return r.clone()
+		err = r.clone()
 	}
 
-	fetch := func() error {
-		err := r.repo.Fetch(
+	fetch := func() {
+		err = r.repo.Fetch(
 			&git.FetchOptions{
 				RemoteName: remote,
 				Auth:       r.getAuth(),
 			},
 		)
-		if err != nil && err != git.NoErrAlreadyUpToDate {
-			return clone()
+
+		if err == git.NoErrAlreadyUpToDate {
+			err = nil
 		}
-		return nil
+
+		if err != nil {
+			clone()
+		}
 	}
 
 	if r.repo != nil {
-		return fetch()
+		fetch()
+		return
 	}
 
-	repo, err := git.PlainOpen(r.path)
-	if err == git.ErrRepositoryNotExists {
-		return clone()
-	}
-
+	var repo *git.Repository
+	repo, err = git.PlainOpen(r.path)
 	if err != nil {
-		return clone()
+		clone()
+		return
 	}
 
 	r.repo = repo
-	if err = fetch(); err != nil {
+	if fetch(); err != nil {
 		r.repo = nil
 	}
 
-	return err
+	return
 }
 
 // Reset resets the repo (hard) to the given commitish
@@ -234,6 +207,10 @@ func (r *Repo) uri() string {
 func (r *Repo) getAuth() transport.AuthMethod {
 	if r.auth.proto == protoGit {
 		return r.auth.key
+	}
+
+	if r.auth.user == "" && r.auth.password == "" {
+		return nil
 	}
 
 	return http.NewBasicAuth(r.auth.user, r.auth.password)
