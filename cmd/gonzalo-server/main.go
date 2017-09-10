@@ -2,66 +2,14 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"net"
 	"os"
 	"path/filepath"
 
 	"github.com/frizinak/gonzalo/git"
+	"github.com/frizinak/gonzalo/server"
 	"github.com/frizinak/gonzalo/ssh/sshconn"
-	"github.com/frizinak/gonzalo/ssh/sshmanager"
 	"github.com/frizinak/gonzalo/stores"
-	"golang.org/x/crypto/ssh"
 )
-
-type Gonzalo struct {
-	sshkey ssh.Signer
-
-	ssh *sshmanager.Pool
-	git *git.Pool
-}
-
-func NewGonzalo(
-	sshkey ssh.Signer,
-	gitAuth map[string]git.Auth,
-	hostKeyStore stores.KeyStorage,
-	privateKeyStore stores.KeyStorage,
-	gitdir string,
-) (*Gonzalo, error) {
-	gitpool := git.NewPool(gitdir)
-	for provider := range gitAuth {
-		gitpool.SetProviderAuth(provider, gitAuth[provider])
-	}
-
-	gonzalo := &Gonzalo{
-		sshkey,
-		sshmanager.NewPool(hostKeyStore, privateKeyStore, 2048),
-		gitpool,
-	}
-
-	return gonzalo, nil
-}
-
-func (g *Gonzalo) sshClient(
-	host, port, user string,
-) (*sshconn.Connection, error) {
-	logger := log.New(os.Stdout, "ssh-"+host, log.LstdFlags)
-	addr, err := net.ResolveTCPAddr("tcp", host+":"+port)
-	if err != nil {
-		return nil, err
-	}
-
-	m, err := g.ssh.Add(logger, g.sshkey, addr, user, true)
-	if err != nil {
-		return nil, err
-	}
-
-	return m.Connection(), nil
-}
-
-func (g *Gonzalo) repo(provider, vendor, project string) (*git.Repo, error) {
-	return g.git.Add(provider, vendor, project)
-}
 
 func main() {
 	gitkey := sshconn.MustPKey(sshconn.ParsePrivateKeyFile("resources/git.key"))
@@ -87,7 +35,7 @@ func main() {
 		panic(err)
 	}
 
-	gonzalo, err := NewGonzalo(
+	gonzalo, err := server.New(
 		sshkey,
 		map[string]git.Auth{
 			"wieni.githost.io": git.NewSSHAuth(gitkey, hostKeyStore, ""),
@@ -101,7 +49,7 @@ func main() {
 		panic(err)
 	}
 
-	pubrepo, err := gonzalo.repo("github.com", "frizinak", "ym")
+	pubrepo, err := gonzalo.Repo("github.com", "frizinak", "ym")
 	if err != nil {
 		panic(err)
 	}
@@ -114,19 +62,30 @@ func main() {
 		panic(err)
 	}
 
-	privaterepo, err := gonzalo.repo("wieni.githost.io", "wieni", "sbstv")
+	prj, err := gonzalo.Project("wieni.githost.io", "wieni", "sbstv")
 	if err != nil {
 		panic(err)
 	}
-	if err := privaterepo.Open(); err != nil {
-		log.Println("Failed to open private repo")
-	}
 
-	if err := privaterepo.Update(); err != nil {
-		log.Println("Failed to update private repo")
+	conf, err := prj.ConfigEnv("9.0.0", "dev-backend")
+	if err != nil {
+		panic(err)
 	}
+	fmt.Printf("%+v\n", conf)
 
-	c, err := gonzalo.sshClient("dako.friz.pro", "22", "asdf")
+	// privaterepo, err := gonzalo.Repo("wieni.githost.io", "wieni", "sbstv")
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// if err := privaterepo.Open(); err != nil {
+	// 	log.Println("Failed to open private repo")
+	// }
+
+	// if err := privaterepo.Update(); err != nil {
+	// 	log.Println("Failed to update private repo")
+	// }
+
+	c, err := gonzalo.SSHClient("dako.friz.pro", "22", "asdf")
 	if err != nil {
 		panic(err)
 	}

@@ -31,3 +31,6 @@
 [submodule "vendor/gopkg.in/warnings.v0"]
 	path = vendor/gopkg.in/warnings.v0
 	url = https://gopkg.in/warnings.v0
+[submodule "vendor/gopkg.in/yaml.v2"]
+	path = vendor/gopkg.in/yaml.v2
+	url = https://gopkg.in/yaml.v2

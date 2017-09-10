@@ -46,6 +46,10 @@ func New(
 	}, nil
 }
 
+func (r *Repo) Path() string {
+	return r.path
+}
+
 // Open opens the repo if it exists, clones it otherwise.
 func (r *Repo) Open() error {
 	if r.repo != nil {
@@ -61,7 +65,7 @@ func (r *Repo) Open() error {
 	return nil
 }
 
-// Ensure opens the repo if it exists, clones it if not and runs git fetch.
+// Update opens the repo if it exists, clones it if not and runs git fetch.
 func (r *Repo) Update() (err error) {
 	defer func() {
 		if err != nil {
